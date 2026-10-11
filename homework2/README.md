@@ -248,3 +248,16 @@ Then install additional dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+
+## Self Notes
+
+For local grading:
+```bash
+python -m grader homework
+```
+
+To view tensorboard
+```bash
+tensorboard --logdir logs
+```
