@@ -55,10 +55,37 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
 
     def __init__(self, d_latent: int = 128, n_tokens: int = 2**10):
         super().__init__()
-        raise NotImplementedError()
+        nhead=4
+        num_layers=3
+        self.embedding = torch.nn.Embedding(n_tokens, d_latent)
+        self.start_token = torch.nn.Parameter(torch.zeros(1, 1, d_latent))
+        layer = torch.nn.TransformerEncoderLayer(d_model=d_latent, nhead=nhead, batch_first=True)
+        self.transformer_encoder  = torch.nn.TransformerEncoder(layer, num_layers=num_layers)
+        self.output_layer = torch.nn.Linear(d_latent, n_tokens)
+
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        raise NotImplementedError()
+
+        B,h,w=x.shape #(B, h,w)
+        x = x.reshape(B, -1) #(B, h*w)
+        embed = self.embedding(x) #(B, h*w, d_latent)
+        embed = torch.cat([self.start_token.expand(B, -1, -1), embed[:, :-1, :]], dim=1) #(B, h*w, d_latent) with start token and Shift the input right by one
+        seq_len=embed.size(1) #h*w
+        mask = torch.nn.Transformer.generate_square_subsequent_mask(seq_len).to(embed.device) #(h*w, h*w)
+        out = self.transformer_encoder(embed, mask=mask) #(B, h*w, d_latent)
+        out = self.output_layer(out) #(B, h*w, n_tokens)
+        return out.reshape(B, h, w, -1), {} 
 
     def generate(self, B: int = 1, h: int = 30, w: int = 20, device=None) -> torch.Tensor:  # noqa
-        raise NotImplementedError()
+        if device is None:
+            device = next(self.parameters()).device
+        x = torch.zeros((B, h * w),dtype=torch.long, device=device)
+        for i in range(h * w ):
+            out, _ = self.forward(x.reshape(B, h, w)) # (B, h, w, 1024)
+            out  = out.reshape(B, h * w, -1)[:, i]  # (B, 1024) @ pos i
+            probs = torch.softmax(out, dim=-1)
+            x[:, i] = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        return x.reshape(B, h, w)
+
+
+
