@@ -75,7 +75,8 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
         out = self.transformer_encoder(embed, mask=mask) #(B, h*w, d_latent)
         out = self.output_layer(out) #(B, h*w, n_tokens)
         return out.reshape(B, h, w, -1), {} 
-
+    
+    @torch.no_grad()
     def generate(self, B: int = 1, h: int = 30, w: int = 20, device=None) -> torch.Tensor:  # noqa
         if device is None:
             device = next(self.parameters()).device
