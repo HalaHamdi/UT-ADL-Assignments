@@ -44,6 +44,10 @@ class BaseLLM:
 
         """
         return self.batched_generate([prompt])[0]
+        # tokens = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        # out = self.model.generate(**tokens)
+        # new_tokens = out[0][tokens["input_ids"].shape[1]:]
+        # return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     @overload
     def batched_generate(
@@ -105,7 +109,20 @@ class BaseLLM:
                 for r in self.batched_generate(prompts[idx : idx + micro_batch_size], num_return_sequences, temperature)
             ]
 
-        raise NotImplementedError()
+        # by default the tokenizer pads on the right, which is not suitable for generation, I set it to left padding to align sequences to the right.
+        self.tokenizer.padding_side = "left"
+        #this one returns a dictionary with input_ids and attention_mask, will use ** to unpack it when passing to generate
+        tokens = self.tokenizer(prompts, return_tensors="pt", padding=True).to(self.device) 
+
+        with torch.no_grad():
+            out = self.model.generate(**tokens, max_new_tokens=30, 
+                                    do_sample=temperature > 0,
+                                    temperature=temperature if temperature > 0 else None,
+                                    num_return_sequences= (num_return_sequences or 1), 
+                                    eos_token_id=self.tokenizer.convert_tokens_to_ids("<|endoftext|>"))
+        decoded = self.tokenizer.batch_decode(out[:, len(tokens["input_ids"][0]):], skip_special_tokens=True)
+        return decoded if num_return_sequences ==None else [decoded[i:i+num_return_sequences] for i in range(0, len(decoded), num_return_sequences)]
+
 
     def answer(self, *questions) -> list[float]:
         """
@@ -130,6 +147,7 @@ def test_model():
         print("output", answer)
     answers = model.batched_generate(testset)
     print(answers)
+
 
 
 if __name__ == "__main__":
