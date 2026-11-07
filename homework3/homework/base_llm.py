@@ -115,7 +115,7 @@ class BaseLLM:
         tokens = self.tokenizer(prompts, return_tensors="pt", padding=True).to(self.device) 
 
         with torch.no_grad():
-            out = self.model.generate(**tokens, max_new_tokens=30, 
+            out = self.model.generate(**tokens, max_new_tokens=45, 
                                     do_sample=temperature > 0,
                                     temperature=temperature if temperature > 0 else None,
                                     num_return_sequences= (num_return_sequences or 1), 
