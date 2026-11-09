@@ -200,3 +200,9 @@ Then install additional dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+To see file size:
+
+```bash
+ls -lhR homework/rft_model
+```

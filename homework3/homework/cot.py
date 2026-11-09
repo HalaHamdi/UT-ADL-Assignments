@@ -47,6 +47,18 @@ class CoTModel(BaseLLM):
                 {"role": "user", "content": "How many seconds are in 3 minutes?"},
                 {"role": "assistant", "content": "1 minute = 60 seconds. 3 * 60 = 180. <answer>180</answer>"},
             ],
+            # "kb_to_bits": [
+            #     {"role": "user", "content": "What does 6 KB equal in bit terms?"},
+            #     {"role": "assistant", "content": "1 KB = 1000 byte, so 6 KB = 6 * 1000 = 6000 byte. 1 byte = 8 bit, so 6000 * 8 = 48000. <answer>48000</answer>"},
+            # ],
+            # "ton_to_kg": [
+            #     {"role": "user", "content": "Can you change 9 metric ton to its equivalent in kg?"},
+            #     {"role": "assistant", "content": "1 metric ton = 1000 kg. 9 * 1000 = 9000. <answer>9000</answer>"},
+            # ],
+            # "ton_to_pound": [
+            #     {"role": "user", "content": "How do we express 3 ton in terms of pound?"},
+            #     {"role": "assistant", "content": "1 ton = 1000 kg, so 3 ton = 3000 kg. 1 kg = 2.2046226 pound, so 3000 * 2.2046226 = 6613.8678. <answer>6613.8678</answer>"},
+            # ],
         }
         chat: list[dict[str, str]] = [
             {"role": "system", "content": "You convert units. Think step by step, be concise, "
@@ -56,8 +68,6 @@ class CoTModel(BaseLLM):
             chat.extend(pair)
         chat.append({"role": "user", "content": question})
         res=self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
-        print("Formatting prompt for question:", res)
-
         return res
 
 

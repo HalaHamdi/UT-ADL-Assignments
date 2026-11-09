@@ -68,7 +68,7 @@ class BaseLLM:
         """
 
     def batched_generate(
-        self, prompts: list[str], num_return_sequences: int | None = None, temperature: float = 0
+        self, prompts: list[str], num_return_sequences: int | None = None, temperature: float = 0,new_max_tokens: int = 40
     ) -> list[str] | list[list[str]]:
         """
         Batched version of `generate` method.
@@ -99,14 +99,14 @@ class BaseLLM:
         # Preventing OOM
         # Depending on your GPU batched generation will use a lot of memory.
         # If you run out of memory, try to reduce the micro_batch_size.
-        micro_batch_size = 32
+        micro_batch_size = 16
         if len(prompts) > micro_batch_size:
             return [
                 r
                 for idx in tqdm(
                     range(0, len(prompts), micro_batch_size), desc=f"LLM Running on Micro Batches {micro_batch_size}"
                 )
-                for r in self.batched_generate(prompts[idx : idx + micro_batch_size], num_return_sequences, temperature)
+                for r in self.batched_generate(prompts[idx : idx + micro_batch_size], num_return_sequences, temperature, new_max_tokens)
             ]
 
         # by default the tokenizer pads on the right, which is not suitable for generation, I set it to left padding to align sequences to the right.
@@ -115,7 +115,7 @@ class BaseLLM:
         tokens = self.tokenizer(prompts, return_tensors="pt", padding=True).to(self.device) 
 
         with torch.no_grad():
-            out = self.model.generate(**tokens, max_new_tokens=45, 
+            out = self.model.generate(**tokens, max_new_tokens=new_max_tokens, 
                                     do_sample=temperature > 0,
                                     temperature=temperature if temperature > 0 else None,
                                     num_return_sequences= (num_return_sequences or 1), 
