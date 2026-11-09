@@ -1,6 +1,6 @@
 from .base_llm import BaseLLM
 from .data import Dataset, benchmark
-
+from datetime import datetime
 
 def load() -> BaseLLM:
     from pathlib import Path
@@ -110,9 +110,11 @@ def train_model(
     train_dataset = TokenizedDataset(tokenizer=llm.tokenizer, data=Dataset("train"), format_fn=format_example)
     training_args = TrainingArguments(
         gradient_checkpointing=True,
-        learning_rate=2e-4,
+        learning_rate=5e-4,
+        lr_scheduler_type="cosine",
+        warmup_ratio=0.05,
         output_dir=output_dir,
-        logging_dir=output_dir,
+        logging_dir=f"{output_dir}/logs/{datetime.now():%Y-%m-%d_%H-%M-%S}",
         report_to="tensorboard",
         logging_steps=3,
         num_train_epochs=5,

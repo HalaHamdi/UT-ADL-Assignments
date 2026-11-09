@@ -201,8 +201,30 @@ Then install additional dependencies:
 pip install -r requirements.txt
 ```
 
-To see file size:
+To see file size of both models:
 
 ```bash
-ls -lhR homework/rft_model
+du -shc homework/sft_model homework/rft_model
+```
+
+deletion of checkpoints and tensorboard:
+
+```bash
+find homework/sft_model homework/rft_model -type d -name "checkpoint-*" -exec rm -rf {} +
+```
+
+```bash
+find homework/sft_model homework/rft_model -name "events.out.tfevents*" -delete
+```
+
+check total again
+
+```bash
+du -shc homework/sft_model homework/rft_model
+```
+
+```bash
+python3 bundle.py homework hh32263
+ls -lh hh32263.zip
+python3 -m grader hh32263.zip
 ```
