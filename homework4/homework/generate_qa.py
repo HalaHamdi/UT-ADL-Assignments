@@ -168,7 +168,7 @@ def extract_kart_objects(
         track_id = int(detection[1])
         x1, y1, x2, y2 = detection[2:6]
         x1_scaled = x1 * scale_x
-        y1_scaled = y1 * scale_y
+        y1_scaled = y1 * scale_y 
         x2_scaled = x2 * scale_x
         y2_scaled = y2 * scale_y
 
@@ -188,13 +188,13 @@ def extract_kart_objects(
         })
 
     # The ego kart is the one closest to the image center
-    # if karts:
-    #     ego = min(karts, key=lambda k: (k["center"][0] - center_x_img) ** 2 + (k["center"][1] - center_y_img) ** 2)
-    #     ego["is_center_kart"] = True
+    if karts:
+        ego = min(karts, key=lambda k: (k["center"][0] - center_x_img) ** 2 + (k["center"][1] - center_y_img) ** 2)
+        ego["is_center_kart"] = True
 
-    for k in karts:
-        if k["instance_id"] == view_index:
-            k["is_center_kart"] = True
+    # for k in karts:
+    #     if k["instance_id"] == view_index:
+    #         k["is_center_kart"] = True
 
     return karts
 
@@ -275,12 +275,12 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
 
             # None on a tie; smaller y is higher in the image, i.e. further ahead of the ego car
             horizontal = "left" if kart_x <= ego_x else "right"
-            vertical = "front" if kart_y < ego_y else "behind"
+            vertical = "front" if kart_y < ego_y else "back"
 
             left_count += horizontal == "left"
             right_count += horizontal == "right"
             front_count += vertical == "front"
-            behind_count += vertical == "behind"
+            behind_count += vertical == "back"
 
            
             qa_pairs.append({
@@ -306,7 +306,7 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
             {"question": "How many karts are behind the ego car?", "answer": str(behind_count)},
         ])
 
-    return qa_pairs
+    return [qa for qa in qa_pairs if qa["answer"] != "0"]
 
 def check_qa_pairs(info_file: str, view_index: int):
     """
