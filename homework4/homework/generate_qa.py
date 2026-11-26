@@ -188,9 +188,13 @@ def extract_kart_objects(
         })
 
     # The ego kart is the one closest to the image center
-    if karts:
-        ego = min(karts, key=lambda k: (k["center"][0] - center_x_img) ** 2 + (k["center"][1] - center_y_img) ** 2)
-        ego["is_center_kart"] = True
+    # if karts:
+    #     ego = min(karts, key=lambda k: (k["center"][0] - center_x_img) ** 2 + (k["center"][1] - center_y_img) ** 2)
+    #     ego["is_center_kart"] = True
+
+    for k in karts:
+        if k["instance_id"] == view_index:
+            k["is_center_kart"] = True
 
     return karts
 
