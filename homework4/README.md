@@ -90,6 +90,12 @@ Finally, write question-answer pairs into a `..._qa_pairs.json` file in `data/tr
 python -m homework.finetune train
 ```
 
+I ADDED THIS:
+
+```bash 
+ python -m homework.generate_qa generate
+```
+
 Do NOT train on the validation data provided.
 It will inflate your validation accuracy, and unlikely generalizes to the test set.
 
@@ -101,6 +107,11 @@ Run
 
 ```bash
 python -m homework.generate_captions check --info_file data/valid/00000_info.json --view_index 0
+```
+
+OR 
+```bash
+python -m homework.generate_qa check --info_file data/valid/00000_info.json --view_index 0
 ```
 
 The visualize the extracted supertuxkart information and your generated captions.
