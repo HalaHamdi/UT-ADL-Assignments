@@ -168,3 +168,35 @@ Then install additional dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+
+
+___
+
+
+
+Run dataset validator for part1:
+
+1.
+```bash 
+python -m homework.generate_qa generate --split valid
+```
+
+2. 
+```bash
+python3 validate_qa.py
+```
+
+
+Run dataset validator for part2:
+
+1.
+```bash 
+python -m homework.generate_captions generate --split valid
+```
+
+2. 
+```bash
+python3 validate_captions.py
+```
+

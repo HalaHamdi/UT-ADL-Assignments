@@ -167,10 +167,11 @@ def extract_kart_objects(
             continue  # not a kart
         track_id = int(detection[1])
         x1, y1, x2, y2 = detection[2:6]
-        x1_scaled = x1 * scale_x
-        y1_scaled = y1 * scale_y 
-        x2_scaled = x2 * scale_x
-        y2_scaled = y2 * scale_y
+      
+        x1_scaled = int(x1 * scale_x)
+        y1_scaled = int(y1 * scale_y) 
+        x2_scaled = int(x2 * scale_x)
+        y2_scaled = int(y2 * scale_y)
 
         if (x2_scaled - x1_scaled) < min_box_size or (y2_scaled - y1_scaled) < min_box_size:
             continue
