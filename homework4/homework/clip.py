@@ -102,7 +102,6 @@ class CLIP(nn.Module):
         self.vision_encoder = vision_encoder
         self.text_encoder = text_encoder
         # TODO: implement the rest components
-        raise NotImplementedError("Not implemented")
 
     def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         return self.vision_encoder(image)
@@ -180,7 +179,10 @@ class CLIP(nn.Module):
         Returns:
             TODO: think about the what values should be returned
         """
-        raise NotImplementedError("Not implemented")
+        image_features = self.encode_image(pixel_values)
+        text_features = self.encode_text(input_ids, attention_mask)
+        logit_scale = self.logit_scale.float().exp().clamp(max=100.0)
+        return image_features, text_features, logit_scale
 
 
 def compute_clip_loss(
@@ -199,7 +201,27 @@ def compute_clip_loss(
     Returns:
         The loss for the CLIP model.
     """
-    raise NotImplementedError("Not implemented")
+    image_features, text_features, logit_scale = outputs
+
+    # Step 1: similarity of every image with every caption in the batch -> [B, B].
+    # The correct pairs are on the diagonal (image i goes with caption i).
+    logits = logit_scale * image_features @ text_features.T
+    batch_size = logits.shape[0]
+    targets = torch.arange(batch_size, device=logits.device)
+
+    # Step 2: many captions repeat (e.g. "The track is fortmagma."). Two identical captions in one batch
+    # are both correct, so they must not be treated as wrong answers for each other.
+    # We detect them by comparing the token ids (the collator stores them in `labels`).
+    if labels is not None:
+        same_caption = (labels.unsqueeze(1) == labels.unsqueeze(0)).all(dim=-1)
+        not_self = ~torch.eye(batch_size, dtype=torch.bool, device=logits.device)
+        logits = logits.masked_fill(same_caption & not_self, float("-inf"))
+
+    # Step 3: cross entropy in both directions (image -> caption and caption -> image), then average
+    loss_image_to_text = F.cross_entropy(logits, targets)
+    loss_text_to_image = F.cross_entropy(logits.T, targets)
+    return (loss_image_to_text + loss_text_to_image) / 2
+    
 
 
 def get_target_modules_for_lora(model: nn.Module) -> list[str]:

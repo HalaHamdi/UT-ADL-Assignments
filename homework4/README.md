@@ -200,3 +200,5 @@ python -m homework.generate_captions generate --split valid
 python3 validate_captions.py
 ```
 
+
+python3 -m grader homework -v
