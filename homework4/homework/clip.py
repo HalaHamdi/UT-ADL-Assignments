@@ -12,6 +12,7 @@ from transformers import AutoProcessor, Trainer, TrainingArguments
 
 from .base_vlm import BaseVLM
 from .data import CaptionDataset, MultiChoiceQADataset
+import torch.nn.functional as F
 
 processor = AutoProcessor.from_pretrained("HuggingFaceTB/SmolVLM-256M-Instruct")
 
@@ -102,6 +103,9 @@ class CLIP(nn.Module):
         self.vision_encoder = vision_encoder
         self.text_encoder = text_encoder
         # TODO: implement the rest components
+        self.vision_proj = nn.Linear(vision_encoder.config.hidden_size, proj_dim)
+        self.text_proj = nn.Linear(text_encoder.config.hidden_size, proj_dim)
+        self.logit_scale = nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1 / temperature)))
 
     def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         return self.vision_encoder(image)
@@ -179,11 +183,45 @@ class CLIP(nn.Module):
         Returns:
             TODO: think about the what values should be returned
         """
-        image_features = self.encode_image(pixel_values)
-        text_features = self.encode_text(input_ids, attention_mask)
-        logit_scale = self.logit_scale.float().exp().clamp(max=100.0)
-        return image_features, text_features, logit_scale
+        '''
+        Steps:
 
+        Text: call encode_text(input_ids, attention_mask), pick the EOS vector in each row, project to D, normalize.
+        Return (image_features, text_features, logit_scale).
+        In __init__, you need:
+        a learnable logit_scale that starts at log(1/0.07)
+        The vision and text H can differ, so check each encoder's output size.
+
+        Remember: test() calls forward with 1 image and K captions. Do not assume the image and text batch sizes are equal.
+        
+        '''
+
+        # ----- image ------
+        pixel_values = pixel_values.to(self.vision_encoder.embeddings.patch_embedding.weight.dtype)  # collator gives float32
+        image_features = self.encode_image(pixel_values).last_hidden_state  # (4, 3, 192, 192) --> (4, 144, 768) where 144 is 16*16 patches
+        vision_feature = image_features.mean(dim=1)  # (4, 144, 768) --> (4, 768)
+        #project and normalise
+        vision_feature = self.vision_proj(vision_feature) #  (4,768) -> (4,64)
+        vision_feature = F.normalize(vision_feature.float(), dim=-1)   # (4, 64), every row has norm 1
+
+
+        # ----- text ------
+        text_hidden = self.text_encoder(input_ids=input_ids,attention_mask=attention_mask, use_cache=False).last_hidden_state  # (4, 11) --> (4, 11, 576)
+        batch_size, seq_len = input_ids.shape 
+        batch_idx = torch.arange(batch_size, device=input_ids.device)
+        if attention_mask is None:
+            last_idx = torch.full((batch_size,), seq_len - 1, device=input_ids.device, dtype=torch.long)
+        else:
+            positions = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
+            last_idx = (attention_mask.long() * positions).argmax(dim=1)
+        text_feature = text_hidden[batch_idx, last_idx]  # (4, 576)
+        #project and normalise
+        text_feature = self.text_proj(text_feature)  # (4, 576) -> (4, 64)
+        text_feature = F.normalize(text_feature.float(), dim=-1)  # (4, 64), every row has norm 1
+        logit_scale = self.logit_scale.float().exp().clamp(max=100.0)  # scalar, starts at ≈ 14.29
+
+        return vision_feature, text_feature, logit_scale
+        
 
 def compute_clip_loss(
     outputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
@@ -201,26 +239,13 @@ def compute_clip_loss(
     Returns:
         The loss for the CLIP model.
     """
-    image_features, text_features, logit_scale = outputs
-
-    # Step 1: similarity of every image with every caption in the batch -> [B, B].
-    # The correct pairs are on the diagonal (image i goes with caption i).
-    logits = logit_scale * image_features @ text_features.T
-    batch_size = logits.shape[0]
-    targets = torch.arange(batch_size, device=logits.device)
-
-    # Step 2: many captions repeat (e.g. "The track is fortmagma."). Two identical captions in one batch
-    # are both correct, so they must not be treated as wrong answers for each other.
-    # We detect them by comparing the token ids (the collator stores them in `labels`).
-    if labels is not None:
-        same_caption = (labels.unsqueeze(1) == labels.unsqueeze(0)).all(dim=-1)
-        not_self = ~torch.eye(batch_size, dtype=torch.bool, device=logits.device)
-        logits = logits.masked_fill(same_caption & not_self, float("-inf"))
-
-    # Step 3: cross entropy in both directions (image -> caption and caption -> image), then average
-    loss_image_to_text = F.cross_entropy(logits, targets)
-    loss_text_to_image = F.cross_entropy(logits.T, targets)
-    return (loss_image_to_text + loss_text_to_image) / 2
+    vision_feature, text_feature, logit_scale = outputs
+    logits_per_image = logit_scale * vision_feature @ text_feature.T
+    logits_per_text = logits_per_image.T
+    targets = torch.arange(vision_feature.shape[0], device=vision_feature.device)
+    loss_i2t = F.cross_entropy(logits_per_image, targets)
+    loss_t2i = F.cross_entropy(logits_per_text, targets)
+    return (loss_i2t + loss_t2i) / 2
     
 
 
@@ -260,7 +285,9 @@ def train(
     # Initialize model and processor
     vision_encoder = vlm.model.model.vision_model
     text_encoder = vlm.model.model.text_model
-    model = CLIP(vision_encoder, text_encoder).to(device).bfloat16()
+    # model = CLIP(vision_encoder, text_encoder).to(device).bfloat16()
+    model = CLIP(vision_encoder, text_encoder).to(device)
+    model = model.bfloat16() if device == "cuda" else model.float() 
     model.set_trainable_parameters()
 
     peft_config = LoraConfig(
@@ -274,6 +301,7 @@ def train(
         bias="none",
     )
     model = get_peft_model(model, peft_config)
+    model.set_trainable_parameters() ## added this 
     model.print_trainable_parameters()
     model.to(device)
     model.train()
@@ -319,6 +347,45 @@ def train(
     writer.close()
 
     return model, processor
+
+
+def debug(batch_size: int = 4, data_dir: Path | None = None):
+    """Build the model like train() and run forward() once on one small batch. No training."""
+    from torch.utils.data import DataLoader
+
+    vlm = BaseVLM()
+    model = CLIP(vlm.model.model.vision_model, vlm.model.model.text_model).to(device).bfloat16()
+    model.set_trainable_parameters()
+
+    peft_config = LoraConfig(
+        task_type=TaskType.FEATURE_EXTRACTION,
+        inference_mode=False,
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.0,
+        target_modules=get_target_modules_for_lora(model),
+        bias="none",
+    )
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+    model.to(device)
+    model.train()
+    model.gradient_checkpointing_enable()
+    model.enable_input_require_grads()
+
+    dataset = CaptionDatasetForTraining(CaptionDataset("train", data_dir), processor)
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=clip_data_collator, num_workers=0)
+    batch = next(iter(loader))
+    batch = {k: v.to(device) for k, v in batch.items()}
+    # Model is bf16 but the collator returns float32 pixels; match them (Trainer does this via autocast on cuda).
+    batch["pixel_values"] = batch["pixel_values"].to(torch.bfloat16)
+
+    for k, v in batch.items():
+        print(f"batch[{k}]: shape={tuple(v.shape)} dtype={v.dtype}")
+
+    outputs = model(**batch)
+    # for i, o in enumerate(outputs):
+    #     print(f"outputs[{i}]: shape={tuple(o.shape)} dtype={o.dtype}")
 
 
 def demo_train():
@@ -376,7 +443,7 @@ def test(ckpt_path: str, val_dataset: str = "valid_grader"):
 def main():
     from fire import Fire
 
-    Fire({"train": train, "test": test})
+    Fire({"train": train, "test": test, "debug": debug})
 
 
 if __name__ == "__main__":
