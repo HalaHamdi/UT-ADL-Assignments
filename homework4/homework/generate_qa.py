@@ -238,8 +238,6 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
             "question": "What kart is the ego car?",
             "answer": ego_kart["kart_name"]
         })
-    else:
-        print("No ego kart detected in info file", info_path, "for view index", view_index)
 
     # 2. Total karts question
     # How many karts are there in the scenario?
