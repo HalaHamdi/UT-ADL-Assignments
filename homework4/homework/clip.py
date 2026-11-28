@@ -348,46 +348,6 @@ def train(
 
     return model, processor
 
-
-def debug(batch_size: int = 4, data_dir: Path | None = None):
-    """Build the model like train() and run forward() once on one small batch. No training."""
-    from torch.utils.data import DataLoader
-
-    vlm = BaseVLM()
-    model = CLIP(vlm.model.model.vision_model, vlm.model.model.text_model).to(device).bfloat16()
-    model.set_trainable_parameters()
-
-    peft_config = LoraConfig(
-        task_type=TaskType.FEATURE_EXTRACTION,
-        inference_mode=False,
-        r=8,
-        lora_alpha=32,
-        lora_dropout=0.0,
-        target_modules=get_target_modules_for_lora(model),
-        bias="none",
-    )
-    model = get_peft_model(model, peft_config)
-    model.print_trainable_parameters()
-    model.to(device)
-    model.train()
-    model.gradient_checkpointing_enable()
-    model.enable_input_require_grads()
-
-    dataset = CaptionDatasetForTraining(CaptionDataset("train", data_dir), processor)
-    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=clip_data_collator, num_workers=0)
-    batch = next(iter(loader))
-    batch = {k: v.to(device) for k, v in batch.items()}
-    # Model is bf16 but the collator returns float32 pixels; match them (Trainer does this via autocast on cuda).
-    batch["pixel_values"] = batch["pixel_values"].to(torch.bfloat16)
-
-    for k, v in batch.items():
-        print(f"batch[{k}]: shape={tuple(v.shape)} dtype={v.dtype}")
-
-    outputs = model(**batch)
-    # for i, o in enumerate(outputs):
-    #     print(f"outputs[{i}]: shape={tuple(o.shape)} dtype={o.dtype}")
-
-
 def demo_train():
     train(
         train_dataset_name="train_demo",
@@ -443,7 +403,7 @@ def test(ckpt_path: str, val_dataset: str = "valid_grader"):
 def main():
     from fire import Fire
 
-    Fire({"train": train, "test": test, "debug": debug})
+    Fire({"train": train, "test": test})
 
 
 if __name__ == "__main__":
